@@ -5,7 +5,7 @@ sources:
     description: Raw zone — parquet thô do extract/replay.py ghi, expose qua hive connector.
     catalog: raw
     schema: olist
-    loaded_at_field: from_iso8601_timestamp(nullif(order_purchase_timestamp, ''))
+    loaded_at_field: cast(nullif(order_purchase_timestamp, '') as timestamp)
     freshness:
       warn_after: { count: 36, period: hour }
       error_after: { count: 72, period: hour }

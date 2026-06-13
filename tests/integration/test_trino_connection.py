@@ -8,7 +8,8 @@ pytestmark = pytest.mark.integration
 
 
 def test_select_one():
-    assert run_query("SELECT 1") == [(1,)]
+    # trino dbapi fetchall() trả list[list], không phải list[tuple]
+    assert run_query("SELECT 1") == [[1]]
 
 
 def test_catalogs_present():

@@ -23,12 +23,13 @@ def test_no_import_errors(dagbag):
 
 
 def test_daily_dag_loaded(dagbag):
-    dag = dagbag.get_dag("olist_daily")
+    # đọc thẳng từ dagbag.dags (parse-only) — không chạm metadata DB
+    dag = dagbag.dags.get("olist_daily")
     assert dag is not None
 
 
 def test_daily_dag_task_chain(dagbag):
-    dag = dagbag.get_dag("olist_daily")
+    dag = dagbag.dags["olist_daily"]
     assert {t.task_id for t in dag.tasks} == {
         "replay",
         "load_sync_partitions",

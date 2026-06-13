@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Unit + DAG integrity — luôn chạy, không cần hạ tầng.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -e ".[dev]"
+      - name: Unit tests + DAG integrity
+        run: pytest tests/unit airflow/tests
+
+  # dbt: validate model/refs/jinja compile được (không cần Trino/MinIO).
+  dbt-parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dbt-trino
+        run: pip install "dbt-trino>=1.8,<2.0"
+      - name: dbt deps + parse
+        working-directory: dbt
+        env:
+          # parse không kết nối DB nhưng profiles.yml vẫn cần các biến này resolve.
+          TRINO_HOST: localhost
+          TRINO_PORT: "8080"
+          TRINO_USER: dbt
+        run: |
+          dbt deps
+          dbt parse
+
+  # Integration (replay -> Trino -> dbt build) cần full stack + dataset Kaggle.
+  # Bật thủ công khi cần — xem README. Mẫu (commented):
+  #
+  # integration:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: cp .env.example .env && docker compose up -d
+  #     - run: pip install -e ".[dev,dbt,extract]"
+  #     - run: make init-raw bootstrap replay load dbt-build
+  #     - run: pytest -m integration
