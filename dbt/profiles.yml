@@ -1,0 +1,12 @@
+# Commit được vì secrets đi qua env_var — local đọc .env, container đọc env docker
+olist:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      host: "{{ env_var('TRINO_HOST', 'localhost') }}"
+      port: "{{ env_var('TRINO_PORT', '8080') | int }}"
+      user: "{{ env_var('TRINO_USER', 'dbt') }}"
+      catalog: iceberg
+      schema: analytics
+      threads: 4

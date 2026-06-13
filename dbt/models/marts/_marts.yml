@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: |
+      Fact đơn hàng, grain 1 dòng = 1 đơn. GMV loại đơn canceled/unavailable.
+      is_late_delivery null khi chưa có ngày giao thực tế (~3% đơn Olist).
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_unique_id
+        tests: [not_null]
+      - name: gmv
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: order_status
+        tests: [not_null]
+
+  - name: fct_order_items
+    description: Fact item, grain (order_id, order_item_id).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [order_id, order_item_id]
+    columns:
+      - name: product_id
+        tests:
+          - relationships:
+              to: ref('dim_products')
+              field: product_id
+      - name: seller_id
+        tests:
+          - relationships:
+              to: ref('dim_sellers')
+              field: seller_id
+
+  - name: dim_customers
+    description: SCD2 current view, grain customer_unique_id.
+    columns:
+      - name: customer_unique_id
+        tests: [unique, not_null]
+
+  - name: dim_products
+    columns:
+      - name: product_id
+        tests: [unique, not_null]
+
+  - name: dim_sellers
+    columns:
+      - name: seller_id
+        tests: [unique, not_null]
+
+  - name: dim_dates
+    columns:
+      - name: date_day
+        tests: [unique, not_null]
+
+  - name: mart_monthly_gmv
+    description: GMV theo tháng + lũy kế + tăng trưởng MoM (câu hỏi nghiệp vụ chính).
+    columns:
+      - name: year_month
+        tests: [unique, not_null]

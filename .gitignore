@@ -1,0 +1,28 @@
+# secrets & data
+.env
+data/*
+!data/.gitkeep
+
+# python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# airflow (khi chạy local ngoài docker)
+airflow/logs/
+airflow/airflow.db
+airflow/webserver_config.py
+
+# metabase driver jar (tải về, không commit)
+docker/metabase/plugins/*.jar
+
+# misc
+logs/
+.DS_Store

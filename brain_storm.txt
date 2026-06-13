@@ -1,0 +1,72 @@
+E-COMMERCE ANALYTICS PLATFORM — TECH STACK (kiến trúc Lakehouse, ELT)
+
+Extract       | Python (pyarrow)                  | Script ingest dữ liệu Olist CSV, giả lập gọi API, ghi vào lake
+Storage       | MinIO (S3-compatible)             | Object storage chứa toàn bộ data file Parquet
+Table format  | Apache Iceberg                    | Biến file Parquet thành bảng: ACID, schema evolution, time travel, hidden partitioning
+Catalog       | Hive Metastore + Postgres         | Sổ đăng ký bảng Iceberg (bảng nào nằm ở đâu) — thành phần bắt buộc; phase 2 có thể đổi sang REST catalog (Lakekeeper/Polaris)
+Query engine  | Trino                             | Engine SQL phân tán đọc/ghi Iceberg — thay vai trò warehouse
+Transform     | dbt (adapter dbt-trino)           | Model staging → intermediate → marts, SCD2 snapshot (dim_customers), incremental merge (fct_orders), data tests, docs
+Orchestration | Airflow                           | DAG chạy daily: extract → load → dbt build → alert khi fail
+BI / Dashboard| Metabase hoặc Superset            | Nối Trino: dashboard GMV, MoM growth, tỷ lệ hủy đơn, giao trễ theo bang seller, phân khúc khách (NTILE)
+Hạ tầng       | Docker + docker-compose           | ~6 service: MinIO, Hive Metastore, Postgres, Trino, Airflow, Metabase (Trino cần 2–4GB RAM)
+CI/CD         | GitHub Actions                    | Tự chạy dbt build + test trên mỗi PR
+
+Ghi chú:
+- Không có warehouse riêng: MinIO + Iceberg + Trino chính là warehouse (tách storage / compute).
+- ELT thuần: load raw nguyên trạng vào Iceberg trước, mọi transform chạy trong lake qua dbt.
+- Partition fct_orders bằng hidden partitioning: month(order_purchase_timestamp).
+
+
+#DuckDB không có: catalog, small files, compaction.
+nên cần kết hợp với trino iceberg 
+
+
+E-commerce_Analytics_Platform/
+├── docker-compose.yml
+├── .env.example
+├── .env
+├── Makefile                        # (+) thêm: make test / make test-integration
+├── pyproject.toml                  # (+) deps + cấu hình pytest, markers
+├── .gitignore
+├── README.md
+│
+├── docker/
+│   ├── trino/etc/...
+│   ├── hive-metastore/
+│   └── airflow/
+│
+├── utils/                          # (+) package dùng chung: extract, DAG, tests đều import
+│   ├── __init__.py
+│   ├── config.py                   # (+) load .env → Settings (endpoint, bucket, creds)
+│   ├── s3_client.py                # (+) factory tạo MinIO/S3 client (boto3), 1 nơi duy nhất
+│   ├── trino_client.py             # (+) factory tạo connection Trino + helper run_query()
+│   └── log.py                      # (+) logging chuẩn chung (format, level từ env)
+│
+├── extract/
+│   ├── __init__.py
+│   ├── download_olist.py           # chỉ còn logic tải — connect lấy từ utils
+│   ├── replay.py                   # chỉ còn logic chia ngày/ghi parquet
+│   └── (bỏ config.py — chuyển vào utils/config.py)
+│
+├── tests/                          # (+)
+│   ├── conftest.py                 # (+) fixtures: sample DataFrame, mock s3, settings giả
+│   ├── unit/                       # (+) KHÔNG cần docker — chạy mọi nơi, kể cả CI
+│   │   ├── test_config.py          #     đọc .env đúng, thiếu biến thì fail rõ ràng
+│   │   ├── test_replay.py          #     logic cắt theo ngày: ngày không có đơn, ngày
+│   │   │                           #     đầu/cuối dataset, timestamp null rơi vào đâu
+│   │   └── test_download.py        #     parse/validate file tải về, mock Kaggle API
+│   └── integration/                # (+) CẦN docker compose up — đánh dấu marker riêng
+│       ├── test_s3_connection.py   #     kết nối MinIO, bucket tồn tại, ghi/đọc 1 file
+│       ├── test_trino_connection.py#     SELECT 1, catalog raw + iceberg hiện diện
+│       └── test_pipeline_smoke.py  #     replay 1 ngày → query Trino đếm dòng raw khớp
+│
+├── dbt/                            # (test của dbt nằm trong chính dbt: schema tests,
+│   └── ...                         #  unit tests của dbt-core ≥1.8 — không để ở tests/)
+│
+├── airflow/
+│   ├── dags/olist_daily.py
+│   └── tests/                      # (+)
+│       └── test_dag_integrity.py   # (+) import DAG không lỗi, không cycle, đủ task
+│
+├── data/
+└── .github/workflows/ci.yml        # unit + dbt luôn chạy; integration tùy chọn

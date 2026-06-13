@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: olist
+    description: Raw zone — parquet thô do extract/replay.py ghi, expose qua hive connector.
+    catalog: raw
+    schema: olist
+    loaded_at_field: from_iso8601_timestamp(nullif(order_purchase_timestamp, ''))
+    freshness:
+      warn_after: { count: 36, period: hour }
+      error_after: { count: 72, period: hour }
+    tables:
+      - name: orders
+        identifier: orders
+      - name: order_items
+        identifier: order_items
+        freshness: null
+      - name: order_payments
+        identifier: order_payments
+        freshness: null
+      - name: order_reviews
+        identifier: order_reviews
+        freshness: null
+      - name: customers
+        identifier: customers
+        freshness: null
+      - name: products
+        identifier: products
+        freshness: null
+      - name: sellers
+        identifier: sellers
+        freshness: null
+      - name: geolocation
+        identifier: geolocation
+        freshness: null
