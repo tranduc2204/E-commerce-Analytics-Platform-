@@ -15,7 +15,7 @@ Python extract → MinIO (parquet, raw zone) → Trino + Iceberg → dbt transfo
 | Extract       | Python (pandas + pyarrow)       | Ingest CSV Olist, "replay" theo ngày, ghi parquet   |
 | Storage       | MinIO (S3-compatible)           | Object storage chứa parquet                         |
 | Table format  | Apache Iceberg                  | ACID, schema evolution, hidden partitioning         |
-| Catalog       | Hive Metastore + Postgres       | Sổ đăng ký bảng cho cả `raw` (hive) lẫn `iceberg`   |
+| Catalog       | Nessie (iceberg) + file metastore (raw) | `iceberg` curated do Nessie quản lý; `raw` dùng file metastore trên MinIO |
 | Query engine  | Trino                           | SQL phân tán đọc/ghi Iceberg — thay vai warehouse   |
 | Transform     | dbt (`dbt-trino`)               | staging → intermediate → marts, SCD2, incremental   |
 | Orchestration | Airflow                         | DAG daily: replay → load → dbt build                |
@@ -75,8 +75,9 @@ Ranh giới test (giữ tách biệt):
 
 ## Kiến trúc tóm tắt
 
-- **Hai catalog Trino.** `raw` (hive, mọi cột `varchar`, bất biến) phủ lên parquet thô;
-  `iceberg` là vùng curated dbt materialize vào.
+- **Hai catalog Trino.** `raw` (hive connector + **file metastore** trên MinIO, mọi cột `varchar`,
+  bất biến) phủ lên parquet thô; `iceberg` là vùng curated do **Nessie** quản lý, dbt materialize vào.
+  Không còn Hive Metastore service.
 - **Replay** biến dump tĩnh thành luồng theo ngày → incremental/snapshot/freshness của dbt có ý nghĩa.
   Đơn thiếu `order_purchase_timestamp` không thuộc ngày nào và không vào lake.
 - **Load là bước riêng:** external table không tự thấy partition mới — `extract/load_raw.py` gọi

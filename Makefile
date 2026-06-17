@@ -1,3 +1,9 @@
+
+
+
+
+
+
 # Makefile — phím tắt cho stack Olist lakehouse.
 # docker compose tự nạp .env; copy .env.example -> .env trước khi chạy.
 
@@ -18,7 +24,7 @@ install:  ## Cài deps dev vào venv hiện hành (pip install -e .[dev,dbt,extr
 
 # ---------- hạ tầng Docker ----------
 .PHONY: up
-up:  ## Dựng toàn bộ stack (MinIO, Postgres, Hive Metastore, Trino, Airflow, Metabase)
+up:  ## Dựng toàn bộ stack (MinIO, Postgres, Nessie, Trino, Airflow, Metabase)
 	docker compose up -d
 
 .PHONY: down
@@ -26,7 +32,7 @@ down:  ## Tắt stack (giữ volume)
 	docker compose down
 
 .PHONY: clean
-clean:  ## Tắt stack + xoá volume (mất sạch dữ liệu lake/metastore)
+clean:  ## Tắt stack + xoá volume (mất sạch dữ liệu lake + catalog Nessie)
 	docker compose down -v
 
 .PHONY: ps

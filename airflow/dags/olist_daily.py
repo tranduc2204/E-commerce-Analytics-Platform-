@@ -29,7 +29,7 @@ def _replay(ds: str, **_):
 
 
 def _load(**_):
-    """Sync partition metadata để Trino/hive thấy dữ liệu vừa ghi."""
+    """Sync partition metadata để Trino (raw file metastore) thấy dữ liệu vừa ghi."""
     from extract.replay import DAILY_TABLES
     from utils.trino_client import sync_raw_partitions
 

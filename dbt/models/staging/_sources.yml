@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: olist
-    description: Raw zone — parquet thô do extract/replay.py ghi, expose qua hive connector.
+    description: Raw zone — parquet thô do extract/replay.py ghi, expose qua hive connector (file metastore).
     catalog: raw
     schema: olist
     loaded_at_field: cast(nullif(order_purchase_timestamp, '') as timestamp)

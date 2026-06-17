@@ -31,7 +31,7 @@ def run_query(sql: str, settings: Settings | None = None, catalog: str = "iceber
 
 
 def sync_raw_partitions(tables: list[str], settings: Settings | None = None) -> None:
-    """Báo cho hive metastore biết các partition mới mà replay vừa ghi lên MinIO."""
+    """Báo cho file metastore (raw) biết các partition mới mà replay vừa ghi lên MinIO."""
     for table in tables:
         run_query(
             f"CALL raw.system.sync_partition_metadata('olist', '{table}', 'ADD')",

@@ -13,11 +13,13 @@ clean-targets: ["target", "dbt_packages"]
 
 models:
   olist:
+    # Nessie (Iceberg catalog) không hỗ trợ CREATE VIEW trên Trino,
+    # nên staging/intermediate materialize thành table thay vì view.
     staging:
-      +materialized: view
+      +materialized: table
       +schema: staging
     intermediate:
-      +materialized: view
+      +materialized: table
       +schema: intermediate
     marts:
       +materialized: table

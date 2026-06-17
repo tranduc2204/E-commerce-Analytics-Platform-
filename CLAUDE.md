@@ -19,10 +19,10 @@ vì số lượng dữ liệu của tập dataset này có giới hạn nên. h�
 Toàn bộ hạ tầng chạy qua Docker Compose; `.env` được compose tự nạp (copy từ `.env.example`).
 
 ```bash
-# Dựng toàn bộ stack (MinIO, Postgres, Hive Metastore, Trino, Airflow, Metabase)
+# Dựng toàn bộ stack (MinIO, Postgres, Nessie, Trino, Airflow, Metabase)
 docker compose up -d
 
-# Giao diện service:  MinIO console :9001 | Trino :8080 | Airflow :8088 | Metabase :3000
+# Giao diện service:  MinIO console :9001 | Trino :8080 | Airflow :8088 | Metabase :3000 | Nessie API :19120
 
 # Đăng ký schema raw + external table trong Trino (chạy 1 lần sau khi MinIO đã có prefix dữ liệu)
 docker compose exec trino trino --catalog raw -f /sql/01_init_raw.sql
@@ -47,10 +47,9 @@ pytest -m integration                           # cần `docker compose up` trư
 pytest tests/unit/test_replay.py::test_missing_timestamp_belongs_to_no_day   # một test đơn lẻ
 ```
 
-> Test integration được đánh dấu bằng `pytest.mark.integration`. Hiện **chưa có `pyproject.toml`**,
-> nên cần đăng ký marker này ở đó (không thì sẽ có cảnh báo "unknown marker"). `Makefile`,
-> `pyproject.toml`, build context `docker/hive-metastore/`, và `.github/workflows/ci.yml`
-> được nhắc tới trong kế hoạch (`brain_storm.txt`) nhưng **chưa được tạo**.
+> Test integration được đánh dấu bằng `pytest.mark.integration` (đã đăng ký marker trong
+> `pyproject.toml`). Nessie dùng image dựng sẵn `ghcr.io/projectnessie/nessie` nên **không có**
+> build context riêng trong `docker/` (khác Hive Metastore cũ).
 
 ## Kiến trúc
 
@@ -58,12 +57,16 @@ pytest tests/unit/test_replay.py::test_missing_timestamp_belongs_to_no_day   # m
 - **`raw`** (Hive connector, `docker/trino/etc/catalog/raw.properties`): external table phủ lên
   parquet mà `extract/replay.py` ghi vào `s3://lake/raw/<table>/`. **Mọi cột đều là `varchar`** —
   raw phản chiếu CSV nguyên trạng, chỉ đọc, bất biến. Định nghĩa trong `sql/02_raw_tables.sql`,
-  partition theo `ingestion_date`.
+  partition theo `ingestion_date`. Metastore là **file-based** (`hive.metastore=file`,
+  `hive.metastore.catalog.dir=s3://lake/raw-meta`) — không cần service riêng; `sync_partition_metadata`
+  vẫn chạy bình thường.
 - **`iceberg`** (`iceberg.properties`): vùng curated. dbt materialize mọi thứ vào đây.
-  ACID, schema evolution, hidden partitioning.
+  ACID, schema evolution, hidden partitioning. Catalog do **Nessie** (REST v2, `iceberg.catalog.type=nessie`,
+  branch `main`) quản lý — sổ đăng ký bảng Iceberg "bảng nào nằm ở đâu".
 
-Cả hai dùng chung một Hive Metastore làm catalog. **Không có warehouse riêng** — MinIO + Iceberg
-+ Trino *chính là* warehouse (tách storage/compute).
+**Không còn Hive Metastore service.** Hai catalog dùng **hai cơ chế catalog khác nhau** (Nessie cho
+iceberg, file metastore cho raw) vì Nessie chỉ phục vụ Iceberg, không phủ được external Hive table.
+**Không có warehouse riêng** — MinIO + Iceberg + Trino *chính là* warehouse (tách storage/compute).
 
 ### Mô phỏng "replay" — vì sao tồn tại
 Olist là một dump lịch sử tĩnh (2016–2018). `extract/replay.py` biến nó thành luồng: mỗi lần
@@ -78,16 +81,18 @@ Quyết định logic nghiệp vụ then chốt mã hoá trong `slice_for_date()
 tham chiếu trong từng lát cắt.
 
 ### Load là một bước riêng biệt
-External table của Hive không tự phát hiện partition mới trên S3. Sau khi replay ghi parquet,
+External table (file metastore) không tự phát hiện partition mới trên S3. Sau khi replay ghi parquet,
 `extract/load_raw.py` (và task `load_sync_partitions` của DAG) gọi `sync_partition_metadata` thông
 qua `utils/trino_client.sync_raw_partitions()`. Đây là chữ "L" trong ELT.
 
 ### Phân tầng dbt (`dbt/models/`)
-- **staging/** (view): một model cho mỗi source, cast `varchar` → kiểu thật bằng
+> Lưu ý Nessie: Trino **không tạo được view** trên Iceberg Nessie catalog, nên staging và
+> intermediate materialize thành **table** (cấu hình ở `dbt_project.yml`), không phải view.
+- **staging/** (table): một model cho mỗi source, cast `varchar` → kiểu thật bằng
   `cast(nullif(col, '') as timestamp)`. Olist dùng định dạng dấu cách `YYYY-MM-DD HH:MM:SS`
   (**không** phải ISO-8601 có chữ `T`), nên không dùng `from_iso8601_timestamp`.
   **Mọi việc cast kiểu xảy ra ở đây**, không ở đâu khác phía trên.
-- **intermediate/** (view): nắn các bảng con về **grain đơn hàng** (`int_order_items_agg`,
+- **intermediate/** (table): nắn các bảng con về **grain đơn hàng** (`int_order_items_agg`,
   `int_order_payments_agg`) và dedup review về một-dòng-mỗi-đơn (`int_order_reviews_dedup`).
 - **marts/** (table): star schema. `fct_orders` (grain = 1 đơn) và `fct_order_items`
   (grain = order_id + order_item_id) dùng **incremental merge** với cửa sổ lookback 3 ngày và
@@ -111,14 +116,14 @@ không bao giờ nhân bản logic kết nối. Compose mount nó vào container
 
 ### Tính hai mặt của hostname — footgun số 1
 Bên trong mạng Docker, các service gọi nhau bằng tên service (`minio:9000`, `trino:8080`,
-`hive-metastore:9083`). Từ máy host thì là `localhost` + port được map. Mọi endpoint đi qua biến
+`nessie:19120`). Từ máy host thì là `localhost` + port được map. Mọi endpoint đi qua biến
 môi trường (`.env` khi chạy ở host, khối `environment:` của compose cho container Airflow) —
 **không bao giờ hardcode host**. File catalog của Trino đọc credential MinIO qua
 `${ENV:MINIO_ROOT_USER}` / `${ENV:MINIO_ROOT_PASSWORD}`, được tiêm vào trong service `trino` của compose.
 
 ### Một Postgres phục vụ ba database
-Một container Postgres chứa `metastore_db`, `airflow_db` và `metabase_db` (tạo bởi
-`docker/postgres/init-dbs.sql`) để tiết kiệm bộ nhớ.
+Một container Postgres chứa `nessie_db` (version store của Nessie), `airflow_db` và `metabase_db`
+(tạo bởi `docker/postgres/init-dbs.sql`) để tiết kiệm bộ nhớ.
 
 ## Ranh giới test (giữ chúng tách biệt)
 - `tests/` — chỉ logic code Python (unit = không cần hạ tầng; integration = cần stack đang chạy).

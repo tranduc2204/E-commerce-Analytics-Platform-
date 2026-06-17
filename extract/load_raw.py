@@ -1,6 +1,6 @@
-"""Bước Load: đăng ký partition mới với hive metastore sau khi replay ghi xong.
+"""Bước Load: đăng ký partition mới với file metastore sau khi replay ghi xong.
 
-Hive external table không tự thấy partition mới trên S3 — phải gọi
+External table không tự thấy partition mới trên S3 — phải gọi
 sync_partition_metadata. Đây là bước "L" tách bạch trong ELT.
 
 Chạy: python -m extract.load_raw            # sync các bảng daily
